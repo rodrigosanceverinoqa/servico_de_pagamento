@@ -1,0 +1,61 @@
+name: CI - Testes Unitários
+
+on:
+  # 1. Disparo por push nas branches principais
+  push:
+    branches:
+      - main
+
+  # 2. Disparo agendado - toda segunda-feira às 08:00 UTC
+  schedule:
+    - cron: '0 8 * * 1'
+
+  # 3. Disparo manual via aba "Actions" no GitHub
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Criar pasta para relatório
+        run: mkdir -p test-results
+
+      - name: Rodar testes e gerar relatório JSON
+        run: npx mocha --reporter json > test-results/report.json; exit 0
+
+      - name: Salvar relatório como artifact da pipeline
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-testes
+          path: test-results/report.json
+          retention-days: 30
+
+      - name: Validar resultado dos testes
+        run: |
+          node -e "
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('test-results/report.json', 'utf8'));
+            console.log('Testes executados : ' + report.stats.tests);
+            console.log('Testes passando   : ' + report.stats.passes);
+            console.log('Testes falhando   : ' + report.stats.failures);
+            if (report.stats.failures > 0) {
+              console.error('FALHA: ha testes reprovados!');
+              process.exit(1);
+            } else {
+              console.log('Todos os testes passaram!');
+            }
+          "
